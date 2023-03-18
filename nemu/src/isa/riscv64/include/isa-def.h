@@ -21,7 +21,7 @@
 typedef struct {
   word_t gpr[32];
   vaddr_t pc;
-} riscv64_CPU_state;
+} riscv64_CPU_state; //一个PC寄存器，32个通用寄存器
 
 // decode
 typedef struct {

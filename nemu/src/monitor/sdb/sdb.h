@@ -17,7 +17,20 @@
 #define __SDB_H__
 
 #include <common.h>
+#include <memory/paddr.h>
 
 word_t expr(char *e, bool *success);
+typedef struct watchpoint {
+  int NO;
+  struct watchpoint *next;
+  char expr[32];
+  uint64_t result;
+
+  /* TODO: Add more members if necessary */
+
+} WP;
+WP* new_wp(char *ex);
+void watchpoint_display(void);
+void delete_watchpoint(int N);
 
 #endif

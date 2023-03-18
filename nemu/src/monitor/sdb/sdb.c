@@ -49,7 +49,57 @@ static int cmd_c(char *args) {
 
 
 static int cmd_q(char *args) {
+  nemu_state.state = NEMU_QUIT;
   return -1;
+}
+
+static int cmd_si(char *args) {
+  if(args == NULL){
+    cpu_exec(1);      //没有参数的时候执行1步
+  }else{
+    cpu_exec((uint64_t)atoi(args));    //有参数的时候执行参数步
+  }
+  return 0;
+}
+
+static int cmd_info(char *args){
+  if(*args == 'r'){
+    isa_reg_display();
+  }else{
+    watchpoint_display();
+  }
+  return 0;
+}
+
+static int cmd_x(char *args){ //当前版本为强制要求输入16进制数
+  int N,addr;
+  sscanf(args,"%d %x",&N,&addr);
+  printf("N = %d Start_addr = 0x%x\n",N,addr);
+  for(int i=0;i<N;i++){
+    printf("0x%x: %08lx\n",addr,paddr_read(addr,4));
+    addr += 4;
+  }
+  return 0;
+}
+
+static int cmd_p(char *args){
+  bool success = true;
+  word_t result = expr(args,&success);
+  if(success){
+    printf("The result of this expr is %ld\n",result);
+  }
+  return 0;
+}
+
+static int cmd_w(char *args){
+  WP *nwp = new_wp(args);
+  printf("A new watchpoint is set: NO.%d  expr = %s\n",nwp->NO,nwp->expr);
+  return 0;
+}
+
+static int cmd_d(char *args){
+  delete_watchpoint(atoi(args));
+  return 0;
 }
 
 static int cmd_help(char *args);
@@ -62,6 +112,13 @@ static struct {
   { "help", "Display information about all supported commands", cmd_help },
   { "c", "Continue the execution of the program", cmd_c },
   { "q", "Exit NEMU", cmd_q },
+  { "si", "Let the program step through N instructions and then pause execution", cmd_si},
+  { "info", "Print register status(r) / watchpoint information(w)", cmd_info},
+  { "x", "Output N consecutive four bytes in hexadecimal form from the start address", cmd_x},
+  { "p", "Calculate the value of the expression", cmd_p},
+  { "w", "Set a watch point",cmd_w},
+  { "d", "Delete number N watchpoint",cmd_d},
+
 
   /* TODO: Add more commands */
 
@@ -104,9 +161,11 @@ void sdb_mainloop() {
 
   for (char *str; (str = rl_gets()) != NULL; ) {
     char *str_end = str + strlen(str);
+    //printf("str is %s\n",str);
 
     /* extract the first token as the command */
     char *cmd = strtok(str, " ");
+    // printf("cmd is %s\n",cmd);
     if (cmd == NULL) { continue; }
 
     /* treat the remaining string as the arguments,
@@ -116,6 +175,7 @@ void sdb_mainloop() {
     if (args >= str_end) {
       args = NULL;
     }
+    //printf("args is %s\n",args);
 
 #ifdef CONFIG_DEVICE
     extern void sdl_clear_event_queue();

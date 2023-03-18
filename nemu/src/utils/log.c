@@ -19,14 +19,14 @@ extern uint64_t g_nr_guest_inst;
 FILE *log_fp = NULL;
 
 void init_log(const char *log_file) {
-  log_fp = stdout;
+  log_fp = stdout; //log_file的流设为终端，也即将log_fp指针指向stdout文件
   if (log_file != NULL) {
-    FILE *fp = fopen(log_file, "w");
-    Assert(fp, "Can not open '%s'", log_file);
+    FILE *fp = fopen(log_file, "w"); //打开文字文件只写，fopen函数返回文件指针
+    Assert(fp, "Can not open '%s'", log_file); //两者不相等则打开文件失败
     log_fp = fp;
   }
-  Log("Log is written to %s", log_file ? log_file : "stdout");
-}
+  Log("Log is written to %s", log_file ? log_file : "stdout"); //log_file不空显示写入log_file文件，否则显示写入stdout
+} //init_log()函数其实就是把全局变量log_fp设为log_file
 
 bool log_enable() {
   return MUXDEF(CONFIG_TRACE, (g_nr_guest_inst >= CONFIG_TRACE_START) &&

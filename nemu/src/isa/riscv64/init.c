@@ -28,7 +28,7 @@ static const uint32_t img [] = {
 
 static void restart() {
   /* Set the initial program counter. */
-  cpu.pc = RESET_VECTOR;
+  cpu.pc = RESET_VECTOR; //将PC置于第一个客户程序的初始位置
 
   /* The zero register is always 0. */
   cpu.gpr[0] = 0;
@@ -36,7 +36,7 @@ static void restart() {
 
 void init_isa() {
   /* Load built-in image. */
-  memcpy(guest_to_host(RESET_VECTOR), img, sizeof(img));
+  memcpy(guest_to_host(RESET_VECTOR), img, sizeof(img)); //img是一个指针，地址为CONFIG_SDCARD_IMG_PATH，将该路径上的程序载入内存的合理位置
 
   /* Initialize this virtual computer system. */
   restart();

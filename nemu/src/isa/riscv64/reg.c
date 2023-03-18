@@ -24,8 +24,20 @@ const char *regs[] = {
 };
 
 void isa_reg_display() {
+  for(int idx = 0; idx < 32; idx++){
+    const char * name = regs[check_reg_idx(idx)];
+    printf("%s  %"PRIu64"\n",name,gpr(idx));
+  }
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {
+  for (int idx = 0; idx < 32; idx++)
+  {
+    if( !strcmp(s,regs[idx]) ){
+      *success = true;
+      return (word_t)gpr(idx);
+    }
+  }
+  *success = false;
   return 0;
 }

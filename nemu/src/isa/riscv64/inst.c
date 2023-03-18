@@ -56,7 +56,10 @@ static int decode_exec(Decode *s) {
   __VA_ARGS__ ; \
 }
 
-  INSTPAT_START();
+//INSTPAT(模式字符串, 指令名称, 指令类型, 指令执行操作);
+//指令名称在代码中仅当注释使用, 不参与宏展开; 指令类型用于后续译码过程; 而指令执行操作则是通过C代码来模拟指令执行的真正行为
+
+  INSTPAT_START(); //INSTPAT为insttruction pattern,识别指令模式串
   INSTPAT("??????? ????? ????? ??? ????? 00101 11", auipc  , U, R(rd) = s->pc + imm);
   INSTPAT("??????? ????? ????? 011 ????? 00000 11", ld     , I, R(rd) = Mr(src1 + imm, 8));
   INSTPAT("??????? ????? ????? 011 ????? 01000 11", sd     , S, Mw(src1 + imm, 8, src2));
@@ -71,6 +74,6 @@ static int decode_exec(Decode *s) {
 }
 
 int isa_exec_once(Decode *s) {
-  s->isa.inst.val = inst_fetch(&s->snpc, 4);
+  s->isa.inst.val = inst_fetch(&s->snpc, 4); //此时snpc的值正是当前PC的值，此步骤是取指到s中并将snpc的值+4
   return decode_exec(s);
 }

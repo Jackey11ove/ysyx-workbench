@@ -42,11 +42,11 @@ static void out_of_bound(paddr_t addr) {
 }
 
 void init_mem() {
-#if   defined(CONFIG_PMEM_MALLOC)
-  pmem = malloc(CONFIG_MSIZE);
+#if   defined(CONFIG_PMEM_MALLOC) //若宏CONFIG_PMEM_MALLOC已被定义，则申请一片空间，起始地址存在pmem中
+  pmem = malloc(CONFIG_MSIZE); //在RISC64中，CONFIG_MSIZE的值为0x2000000,内存到底是32MB还是128MB？
   assert(pmem);
 #endif
-#ifdef CONFIG_MEM_RANDOM
+#ifdef CONFIG_MEM_RANDOM //该宏被定义后会为pmem指向的空间填满随机数
   uint32_t *p = (uint32_t *)pmem;
   int i;
   for (i = 0; i < (int) (CONFIG_MSIZE / sizeof(p[0])); i ++) {

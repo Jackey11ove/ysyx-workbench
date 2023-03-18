@@ -19,5 +19,6 @@
 #endif
 
 void init_rand() {
-  srand(MUXDEF(CONFIG_TARGET_AM, 0, time(0)));
+  srand(MUXDEF(CONFIG_TARGET_AM, 0, time(0))); 
+  //若CONFIG_TARGET_AM已经被定义则结果为0（随机种子全都一样），否则为time(0),也即以时间作为不同的时间种子
 }
