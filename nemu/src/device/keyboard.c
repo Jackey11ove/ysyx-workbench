@@ -31,7 +31,7 @@ f(LSHIFT) f(Z) f(X) f(C) f(V) f(B) f(N) f(M) f(COMMA) f(PERIOD) f(SLASH) f(RSHIF
 f(LCTRL) f(APPLICATION) f(LALT) f(SPACE) f(RALT) f(RCTRL) \
 f(UP) f(DOWN) f(LEFT) f(RIGHT) f(INSERT) f(DELETE) f(HOME) f(END) f(PAGEUP) f(PAGEDOWN)
 
-#define _KEY_NAME(k) _KEY_##k,
+#define _KEY_NAME(k) _KEY_##k, //##为连接符
 
 // It's conflicted on macos with sys/_types/_key_t.h
 #ifdef __APPLE__
@@ -40,10 +40,12 @@ f(UP) f(DOWN) f(LEFT) f(RIGHT) f(INSERT) f(DELETE) f(HOME) f(END) f(PAGEUP) f(PA
 
 enum {
   _KEY_NONE = 0,
-  MAP(_KEYS, _KEY_NAME)
+  MAP(_KEYS, _KEY_NAME)  //MAP 是一个宏定义，用于将 _KEYS 中的每个键名映射到 _KEY_NAME 中，并在最后添加逗号分隔符；
 };
+//这段代码将会生成一个枚举类型，在该类型中，每个键名都会对应一个整型常量值，从 1 开始依次递增。
+//同时，由于 _KEY_NONE 被赋值为 0，因此该枚举类型的第一个常量值为 0，表示没有键被按下。
 
-#define SDL_KEYMAP(k) keymap[concat(SDL_SCANCODE_, k)] = concat(_KEY_, k);
+#define SDL_KEYMAP(k) keymap[concat(SDL_SCANCODE_, k)] = concat(_KEY_, k); 
 static uint32_t keymap[256] = {};
 
 static void init_keymap() {
@@ -52,7 +54,7 @@ static void init_keymap() {
 
 #define KEY_QUEUE_LEN 1024
 static int key_queue[KEY_QUEUE_LEN] = {};
-static int key_f = 0, key_r = 0;
+static int key_f = 0, key_r = 0; //key_f是队列的出口,key_r是队列的入口
 
 static void key_enqueue(uint32_t am_scancode) {
   key_queue[key_r] = am_scancode;
@@ -69,9 +71,9 @@ static uint32_t key_dequeue() {
   return key;
 }
 
-void send_key(uint8_t scancode, bool is_keydown) {
+void send_key(uint8_t scancode, bool is_keydown) { //按键之后向队列里传输已经按下的键
   if (nemu_state.state == NEMU_RUNNING && keymap[scancode] != _KEY_NONE) {
-    uint32_t am_scancode = keymap[scancode] | (is_keydown ? KEYDOWN_MASK : 0);
+    uint32_t am_scancode = keymap[scancode] | (is_keydown ? KEYDOWN_MASK : 0); //KEYDOWN_MASK=0b1000,0000,0000,0000,相当于在第16位设置了1作为按键按下的标志
     key_enqueue(am_scancode);
   }
 }

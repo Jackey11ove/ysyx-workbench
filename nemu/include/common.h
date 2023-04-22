@@ -37,7 +37,8 @@
 
 typedef MUXDEF(CONFIG_ISA64, uint64_t, uint32_t) word_t;
 typedef MUXDEF(CONFIG_ISA64, int64_t, int32_t)  sword_t;
-#define FMT_WORD MUXDEF(CONFIG_ISA64, "0x%016" PRIx64, "0x%08" PRIx32)
+#define FMT_WORD MUXDEF(CONFIG_ISA64, "0x%016" PRIx64, "0x%08" PRIx32) //%016表示输出的整数应该用16个字符宽度输出，左侧不足填充0
+//PRIx64用于表示以16进制打印64位无符号整数
 
 typedef word_t vaddr_t; //虚拟地址virtual
 typedef MUXDEF(PMEM64, uint64_t, uint32_t) paddr_t; //物理地址physical address

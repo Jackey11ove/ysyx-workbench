@@ -29,7 +29,7 @@ static uint64_t get_time_internal() {
 #elif defined(CONFIG_TIMER_GETTIMEOFDAY)
   struct timeval now;
   gettimeofday(&now, NULL);
-  uint64_t us = now.tv_sec * 1000000 + now.tv_usec;
+  uint64_t us = now.tv_sec * 1000000 + now.tv_usec; //转换成微秒,返回现在的时间
 #else
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
@@ -39,7 +39,7 @@ static uint64_t get_time_internal() {
 }
 
 uint64_t get_time() {
-  if (boot_time == 0) boot_time = get_time_internal();
+  if (boot_time == 0) boot_time = get_time_internal(); //获取一开始的初始时间
   uint64_t now = get_time_internal();
   return now - boot_time;
 }

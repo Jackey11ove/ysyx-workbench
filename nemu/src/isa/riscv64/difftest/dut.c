@@ -18,7 +18,11 @@
 #include "../local-include/reg.h"
 
 bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc) {
-  return false;
+  if(memcmp(ref_r,&cpu,33*8) != 0){
+    return false;
+  }else{
+    return true;
+  }
 }
 
 void isa_difftest_attach() {

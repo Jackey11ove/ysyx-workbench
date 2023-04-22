@@ -18,7 +18,7 @@
 
 // this is not consistent with uint8_t
 // but it is ok since we do not access the array directly
-static const uint32_t img [] = {
+static const uint32_t img [] = { //img就是内置装入的指令序列
   0x00000297,  // auipc t0,0
   0x0002b823,  // sd  zero,16(t0)
   0x0102b503,  // ld  a0,16(t0)
@@ -36,8 +36,7 @@ static void restart() {
 
 void init_isa() {
   /* Load built-in image. */
-  memcpy(guest_to_host(RESET_VECTOR), img, sizeof(img)); //img是一个指针，地址为CONFIG_SDCARD_IMG_PATH，将该路径上的程序载入内存的合理位置
-
+  memcpy(guest_to_host(RESET_VECTOR), img, sizeof(img)); 
   /* Initialize this virtual computer system. */
   restart();
 }

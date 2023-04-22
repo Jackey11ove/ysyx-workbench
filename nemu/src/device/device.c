@@ -54,9 +54,9 @@ void device_update() {
       // If a key was pressed
       case SDL_KEYDOWN:
       case SDL_KEYUP: {
-        uint8_t k = event.key.keysym.scancode;
+        uint8_t k = event.key.keysym.scancode; //得到被按下的键名
         bool is_keydown = (event.key.type == SDL_KEYDOWN);
-        send_key(k, is_keydown);
+        send_key(k, is_keydown); //send_key函数用于将得到的键放入队列之中
         break;
       }
 #endif

@@ -119,9 +119,6 @@ static struct {
   { "w", "Set a watch point",cmd_w},
   { "d", "Delete number N watchpoint",cmd_d},
 
-
-  /* TODO: Add more commands */
-
 };
 
 #define NR_CMD ARRLEN(cmd_table)
@@ -161,8 +158,6 @@ void sdb_mainloop() {
 
   for (char *str; (str = rl_gets()) != NULL; ) {
     char *str_end = str + strlen(str);
-    //printf("str is %s\n",str);
-
     /* extract the first token as the command */
     char *cmd = strtok(str, " ");
     // printf("cmd is %s\n",cmd);

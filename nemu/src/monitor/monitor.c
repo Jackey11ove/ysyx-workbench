@@ -12,9 +12,11 @@
 *
 * See the Mulan PSL v2 for more details.
 ***************************************************************************************/
-
 #include <isa.h>
 #include <memory/paddr.h>
+#include <elf.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 void init_rand();
 void init_log(const char *log_file);
@@ -23,6 +25,13 @@ void init_difftest(char *ref_so_file, long img_size, int port);
 void init_device();
 void init_sdb();
 void init_disasm(const char *triple);
+#ifdef CONFIG_FTRACE
+int  init_ftrace(char *argv);
+Elf64_Sym* sym_table;
+char* str_table;
+int sym_entries;
+#endif
+
 
 static void welcome() {
   Log("Trace: %s", MUXDEF(CONFIG_TRACE, ANSI_FMT("ON", ANSI_FG_GREEN), ANSI_FMT("OFF", ANSI_FG_RED)));
@@ -46,22 +55,23 @@ static char *diff_so_file = NULL;
 static char *img_file = NULL;
 static int difftest_port = 1234;
 
+
 static long load_img() {
   if (img_file == NULL) {
-    Log("No image is given. Use the default build-in image.");
+    Log("No image is given. Use the default build-in image."); //外部没有为nemu载入程序的时候，使用内置的程序
     return 4096; // built-in image size
   }
 
   FILE *fp = fopen(img_file, "rb");
   Assert(fp, "Can not open '%s'", img_file);
 
-  fseek(fp, 0, SEEK_END);
-  long size = ftell(fp);
+  fseek(fp, 0, SEEK_END); //将fp移动至文件的末尾（距文件末尾偏移量为0）
+  long size = ftell(fp); //ftell函数是计算fp指针到文件开头的距离，若fp在文件末尾size就代表整个文件的大小
 
   Log("The image is %s, size = %ld", img_file, size);
 
-  fseek(fp, 0, SEEK_SET);
-  int ret = fread(guest_to_host(RESET_VECTOR), size, 1, fp);
+  fseek(fp, 0, SEEK_SET); //将fp移动至文件开头
+  int ret = fread(guest_to_host(RESET_VECTOR), size, 1, fp); //把image镜像载入初始PC的位置也即程序的装载
   assert(ret == 1);
 
   fclose(fp);
@@ -75,10 +85,10 @@ static int parse_args(int argc, char *argv[]) { //分析参数
     {"diff"     , required_argument, NULL, 'd'},
     {"port"     , required_argument, NULL, 'p'},
     {"help"     , no_argument      , NULL, 'h'},
-    {0          , 0                , NULL,  0 },
+    {"ftrace"   , required_argument, NULL, 'f' },
   };
   int o;
-  while ( (o = getopt_long(argc, argv, "-bhl:d:p:", table, NULL)) != -1) {
+  while ( (o = getopt_long(argc, argv, "-bhl:d:p:f:", table, NULL)) != -1) {
     /*解析getopt_long函数(本质上就是在处理长短选项参数)：
     int getopt_long(int argc, char * const argv[], const char *optstring, const struct option *longopts, int *longindex);
     前两个参数与main函数中的参数相同，*optstring代表短选项字符串，longopts代表长选项结构体          
@@ -96,6 +106,9 @@ static int parse_args(int argc, char *argv[]) { //分析参数
       case 'p': sscanf(optarg, "%d", &difftest_port); break; //optarg为当前选项的参数值，也即终端中键入的argv
       case 'l': log_file = optarg; break;
       case 'd': diff_so_file = optarg; break;
+      #ifdef CONFIG_FTRACE
+      case 'f': sym_entries = init_ftrace(optarg);break;
+      #endif
       case 1: img_file = optarg; return 0;
       default:
         printf("Usage: %s [OPTION...] IMAGE [args]\n\n", argv[0]);
@@ -168,5 +181,76 @@ void am_init_monitor() {
   load_img();
   IFDEF(CONFIG_DEVICE, init_device());
   welcome();
+}
+#endif
+
+#ifdef CONFIG_FTRACE
+int init_ftrace(char *argv){
+    FILE * fd;
+    Elf64_Ehdr* header;
+    Elf64_Shdr* section_headers;
+    size_t symbol_entries;
+
+    symbol_entries = 0;
+
+    //打开ELF文件
+    fd = fopen(argv, "rb");
+    if(fd == NULL){
+      perror("open");
+    }
+
+    //读取ELF文件头部信息
+    fseek(fd, 0, SEEK_SET);
+    header = (Elf64_Ehdr*)malloc(sizeof(Elf64_Ehdr));
+    if (fread( header, sizeof(Elf64_Ehdr), 1, fd) != 1) {
+        perror("read");
+    }
+
+    // 定位到符号表和字符串表所在的节
+    section_headers = (Elf64_Shdr*)malloc(sizeof(Elf64_Shdr) * header->e_shnum);
+    fseek(fd, header->e_shoff, SEEK_SET);
+    if(fread(section_headers, sizeof(Elf64_Shdr) , header->e_shnum, fd) != header->e_shnum){
+      perror("read section");
+    }
+
+
+    for (int i = 0; i < header->e_shnum; i++) {
+        if (section_headers[i].sh_type == SHT_SYMTAB) {
+            // 找到符号表节
+            symbol_entries = section_headers[i].sh_size/section_headers[i].sh_entsize; //该数据记录符号表的条目
+            sym_table = (Elf64_Sym*)malloc(sizeof(Elf64_Sym)*symbol_entries);
+            fseek(fd,section_headers[i].sh_offset,SEEK_SET);
+            if(fread(sym_table, sizeof(Elf64_Sym),symbol_entries,fd) != symbol_entries){
+              perror("read sym_table");
+            }
+            str_table = (char *)malloc(section_headers[section_headers[i].sh_link].sh_size);
+            fseek(fd,section_headers[section_headers[i].sh_link].sh_offset,SEEK_SET);
+            if(fread(str_table,section_headers[section_headers[i].sh_link].sh_size,1,fd) != 1){
+              perror("read string_table");
+            };
+            break;
+        }
+    }
+
+    /*if (sym_table == NULL) {
+        printf("Symbol or string table not found.\n");
+    }else{
+        for(int j=0;j<symbol_entries;j++){
+          printf("Symbol_table: name=%u type=%u value=0x%lx size=%lu\n", sym_table[j].st_name, ELF64_ST_TYPE(sym_table[j].st_info), sym_table[j].st_value, sym_table[j].st_size);
+        }
+    }
+    for(int a=39;a<48;a++){
+      if(str_table[a] == '\0'){
+        printf("\n");
+      }else{
+        printf("%c",str_table[a]);
+      }
+    }*/
+
+    free(header);
+    free(section_headers);
+    fclose(fd);
+
+    return symbol_entries;
 }
 #endif

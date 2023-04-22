@@ -33,6 +33,7 @@ static int skip_dut_nr_inst = 0;
 
 // this is used to let ref skip instructions which
 // can not produce consistent behavior with NEMU
+//difftest_skip_ref()会让REF跳过当前指令的执行, 同时把NEMU的当前的寄存器状态直接同步到REF中, 效果相当于"该指令的执行结果以NEMU的状态为准"
 void difftest_skip_ref() {
   is_skip_ref = true;
   // If such an instruction is one of the instruction packing in QEMU
@@ -51,6 +52,8 @@ void difftest_skip_ref() {
 // The semantic is
 //   Let REF run `nr_ref` instructions first.
 //   We expect that DUT will catch up with REF within `nr_dut` instructions.
+
+
 void difftest_skip_dut(int nr_ref, int nr_dut) {
   skip_dut_nr_inst += nr_dut;
 
@@ -87,8 +90,9 @@ void init_difftest(char *ref_so_file, long img_size, int port) {
       "If it is not necessary, you can turn it off in menuconfig.", ref_so_file);
 
   ref_difftest_init(port);
-  ref_difftest_memcpy(RESET_VECTOR, guest_to_host(RESET_VECTOR), img_size, DIFFTEST_TO_REF);
-  ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF);
+  ref_difftest_memcpy(RESET_VECTOR, guest_to_host(RESET_VECTOR), img_size, DIFFTEST_TO_REF); 
+  //将DUT的guest memory拷贝到REF中,此处内存中存放的正是测试文件镜像img,RESET_VECTOR就是客户程序在内存中的初始位置
+  ref_difftest_regcpy(&cpu, DIFFTEST_TO_REF); //将DUT的寄存器状态拷贝到REF中
 }
 
 static void checkregs(CPU_state *ref, vaddr_t pc) {
@@ -96,6 +100,7 @@ static void checkregs(CPU_state *ref, vaddr_t pc) {
     nemu_state.state = NEMU_ABORT;
     nemu_state.halt_pc = pc;
     isa_reg_display();
+    isa_ref_r_display(*ref);
   }
 }
 
@@ -122,8 +127,8 @@ void difftest_step(vaddr_t pc, vaddr_t npc) {
     return;
   }
 
-  ref_difftest_exec(1);
-  ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT);
+  ref_difftest_exec(1); //ref执行一次
+  ref_difftest_regcpy(&ref_r, DIFFTEST_TO_DUT); //将ref中的寄存器状态备份到ref_r中，比较ref_r和nemu的寄存器状态
 
   checkregs(&ref_r, pc);
 }

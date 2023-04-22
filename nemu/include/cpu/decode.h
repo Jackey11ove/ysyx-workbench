@@ -18,6 +18,8 @@
 
 #include <isa.h>
 
+void print_Iringbuf(void);
+
 typedef struct Decode {
   vaddr_t pc;
   vaddr_t snpc; // static next pc
@@ -95,6 +97,21 @@ finish:
     goto *(__instpat_end); \
   } \
 } while (0)
+
+/*{ const void ** __instpat_end = &&__instpat_end_;
+do {
+  uint32_t key, mask, shift;
+  pattern_decode("??????? ????? ????? ??? ????? 01101 11", 38, &key, &mask, &shift); key mask shif3467t都是辅助译码的
+  if (((s->isa.inst.val >> shift) & mask) == key) {
+    {
+      decode_operand(s, &dest, &src1, &src2, &imm, TYPE_U);1
+      R(dest) = imm;
+    }
+    goto *(__instpat_end);
+  }
+} while (0);
+// ...
+__instpat_end_: ; }*/
 
 #define INSTPAT_START(name) { const void ** __instpat_end = &&concat(__instpat_end_, name);
 #define INSTPAT_END(name)   concat(__instpat_end_, name): ; }

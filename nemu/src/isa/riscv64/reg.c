@@ -26,7 +26,25 @@ const char *regs[] = {
 void isa_reg_display() {
   for(int idx = 0; idx < 32; idx++){
     const char * name = regs[check_reg_idx(idx)];
-    printf("%s  %"PRIu64"\n",name,gpr(idx));
+    printf("%s  0x%16lx   ",name,gpr(idx));
+    if (idx % 4 == 3)
+    {
+      printf("\n");
+    }
+  }
+}
+
+void isa_ref_r_display(CPU_state ref_r)
+{
+  printf("\nref_regs:\n");
+  for (int idx = 0; idx < 32; idx++)
+  {
+    const char *name = regs[idx];
+    printf("%s  0x%16lx   ", name, ref_r.gpr[idx]);
+    if (idx % 4 == 3)
+    {
+      printf("\n");
+    }
   }
 }
 
