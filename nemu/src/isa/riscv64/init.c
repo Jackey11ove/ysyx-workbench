@@ -30,6 +30,9 @@ static void restart() {
   /* Set the initial program counter. */
   cpu.pc = RESET_VECTOR; //将PC置于第一个客户程序的初始位置
 
+  /* Set the initial cpu state. */
+  cpu.csr[1] = 0xa00001800;
+
   /* The zero register is always 0. */
   cpu.gpr[0] = 0;
 }

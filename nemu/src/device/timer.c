@@ -31,7 +31,7 @@ static void rtc_io_handler(uint32_t offset, int len, bool is_write) {
 #ifndef CONFIG_TARGET_AM
 static void timer_intr() {
   if (nemu_state.state == NEMU_RUNNING) {
-    extern void dev_raise_intr();
+    extern void dev_raise_intr(); 
     dev_raise_intr();
   }
 }

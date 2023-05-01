@@ -32,7 +32,7 @@ void difftest_memcpy(paddr_t addr, void *buf, size_t n, bool direction) {
 // `direction`为`DIFFTEST_TO_REF`时, 设置REF的寄存器状态为`dut`;
 void difftest_regcpy(void *dut, bool direction) {
   if(direction == DIFFTEST_TO_DUT){
-    memcpy(dut,&cpu,DIFFTEST_REG_SIZE); 
+    memcpy(dut,&cpu,DIFFTEST_REG_SIZE);
   }else{
     memcpy(&cpu,dut,DIFFTEST_REG_SIZE);
   }

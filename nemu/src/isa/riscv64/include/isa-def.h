@@ -21,6 +21,7 @@
 typedef struct {
   word_t gpr[32];
   vaddr_t pc;
+  word_t csr[4]; //csr[0]=mepc存放触发异常的PC,csr[1]=mstatus存放处理器的状态,csr[2]=mcause存放异常触发的原因,csr[3]=mtvec存放异常处理地址
 } riscv64_CPU_state; //一个PC寄存器，32个通用寄存器
 
 // decode

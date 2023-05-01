@@ -27,7 +27,7 @@
  * This is useful when you use the `si' command.
  * You can modify this value as you want.
  */
-#define MAX_INST_TO_PRINT 10000
+#define MAX_INST_TO_PRINT 100000
 #ifdef CONFIG_FTRACE
   int call_num = 0;
   void ftrace(Decode *s);

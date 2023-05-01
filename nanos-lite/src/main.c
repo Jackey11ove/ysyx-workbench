@@ -20,7 +20,7 @@ int main() {
   init_ramdisk();
 
 #ifdef HAS_CTE
-  init_irq();
+  init_irq(); //最终会调用cte_init函数
 #endif
 
   init_fs();
