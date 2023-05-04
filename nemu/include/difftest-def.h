@@ -28,7 +28,7 @@ enum { DIFFTEST_TO_DUT, DIFFTEST_TO_REF };
 #elif defined(CONFIG_ISA_riscv32)
 # define DIFFTEST_REG_SIZE (sizeof(uint32_t) * 33) // GRPs + pc
 #elif defined(CONFIG_ISA_riscv64)
-# define DIFFTEST_REG_SIZE (sizeof(uint64_t) * 33) // GRPs + pc
+# define DIFFTEST_REG_SIZE (sizeof(uint64_t) * 37) // GRPs + pc + csr
 #elif defined(CONFIG_ISA_loongarch32r)
 # define DIFFTEST_REG_SIZE (sizeof(uint32_t) * 33) // GRPs + pc
 #else

@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/time.h>
 #include <time.h>
 #include <getopt.h>
 #include <errno.h>
@@ -23,23 +24,25 @@
 
 // 宏定义
 #define ARRLEN(arr) (int)(sizeof(arr) / sizeof(arr[0]))
-// #define CONFIG_ITRACE
+//#define CONFIG_ITRACE
+#define CONFIG_WAVE
 #define CONFIG_DIFFTEST
 #define CONFIG_IRINGBUF
 #define CONFIG_MSIZE 0x2000000
 #define CONFIG_MBASE 0x80000000
+#define DEVICE_BASE  0xa0000000
+#define RTC_ADDR (DEVICE_BASE + 0x00000048)
+#define SERIAL_PORT (DEVICE_BASE + 0x000003f8)
 #define RESET_VECTOR (uint32_t) CONFIG_MBASE // 客户程序在内存中的初始位置
 #define PG_ALIGN __attribute((aligned(4096)))
 #define FMT_WORD "0x%016" PRIx64
 #define MAX_INST_TO_PRINT 10000
-#define IO_SPACE_MAX (2 * 1024 * 1024)
-#define NR_MAP 16
+
 
 // 类型定义
 typedef uint64_t word_t;
 typedef uint32_t paddr_t;
 typedef uint64_t vaddr_t;
-typedef void(*io_callback_t)(uint32_t, int, bool);
 
 typedef struct
 {
@@ -59,15 +62,6 @@ typedef struct Decode
   char logbuf[128];
 #endif
 } Decode;
-
-typedef struct {
-  const char *name;
-  // we treat ioaddr_t as paddr_t here
-  paddr_t low;  //映射的起始地址
-  paddr_t high; //映射的结束地址
-  void *space;  //映射的目标空间
-  io_callback_t callback; //回调函数
-} IOMap;
 
 typedef struct
 {
@@ -102,10 +96,6 @@ uint64_t cpu_pc;
 uint32_t cpu_inst;
 static bool g_print_step = false;
 static int NPC_STATE = NPC_RUN;
-static uint8_t *io_space = NULL; //io空间的起始地址
-static uint8_t *p_space = NULL;  //物理地址中可用的io空间地址
-static IOMap maps[NR_MAP] = {}; //io映射的数组
-static int nr_map = 0;
 
 // 函数定义
 uint8_t *guest_to_host(paddr_t paddr) { return pmem + paddr - CONFIG_MBASE; } // paddr是物理地址，此函数由物理地址返回虚拟地址
@@ -133,6 +123,7 @@ void init_disasm(const char *triple);
 #ifdef CONFIG_DIFFTEST
 void difftest_step(vaddr_t pc);
 void init_difftest(const char *ref_so_file, long img_size, int port);
+void difftest_skip_ref(void);
 #endif
 #ifdef CONFIG_IRINGBUF
 static void exec_Iringbuf(Decode *s);
@@ -146,8 +137,10 @@ int main(int argc, char **argv)
   top = new Vtop;
   // VCD波形设置  start
   tfp = new VerilatedVcdC;
+  #ifdef CONFIG_WAVE
   top->trace(tfp, 0);
   tfp->open("wave.vcd");
+  #endif
   // 初始化npc中相关信号的值
   init_npc();
 
@@ -160,6 +153,22 @@ int main(int argc, char **argv)
 
   return 0;
 }
+/***************timer.c***************/
+static uint64_t boot_time = 0;
+
+static uint64_t get_time_internal() {
+  struct timeval now;
+  gettimeofday(&now, NULL);
+  uint64_t us = now.tv_sec * 1000000 + now.tv_usec; //转换成微秒,返回现在的时间
+  return us;
+}
+
+uint64_t get_time() {
+  if (boot_time == 0) boot_time = get_time_internal(); //获取一开始的初始时间
+  uint64_t now = get_time_internal();
+  return now - boot_time;
+}
+
 
 /***************npc***************/
 void init_npc()
@@ -168,12 +177,16 @@ void init_npc()
   top->clk = 0;
   top->reset = 1;
   top->eval();
+  #ifdef CONFIG_WAVE
   tfp->dump(simtime);
+  #endif
   simtime++;
   top->clk = 1;
   top->reset = 1;
   top->eval();
+  #ifdef CONFIG_WAVE
   tfp->dump(simtime);
+  #endif
   simtime++;
 }
 
@@ -187,7 +200,7 @@ extern "C" void ebreak()
   {
     printf("\33[1;31mHIT BAD TRAP\n");
   }
-  exit(0);
+  NPC_STATE = NPC_STOP;
 }
 
 extern "C" void set_gpr_ptr(const svOpenArrayHandle r)
@@ -213,7 +226,15 @@ extern "C" void inst_fetch(long long raddr, int *rdata)
 extern "C" void mem_read(long long raddr, long long *rdata)
 {
   // 总是读取地址为`raddr & ~0x7ull`的8字节返回给`rdata`
-  *rdata = paddr_read(raddr & ~0x7ull, 8);
+  if(raddr == RTC_ADDR){
+    *rdata = get_time();
+    #ifdef CONFIG_DIFFTEST
+      difftest_skip_ref();
+    #endif
+  }else{
+    *rdata = paddr_read(raddr & ~0x7ull, 8);
+  }
+
 }
 
 extern "C" void mem_write(long long waddr, long long wdata, char shift, char DWHB)
@@ -221,10 +242,19 @@ extern "C" void mem_write(long long waddr, long long wdata, char shift, char DWH
   // 总是往地址为`waddr & ~0x7ull`的8字节按写掩码`wmask`写入`wdata`
   // `wmask`中每比特表示`wdata`中1个字节的掩码,
   // 如`wmask = 0x3`代表只写入最低2个字节, 内存中的其它字节保持不变
-  int len = (int)DWHB;
-  int offset = (int)shift >> 3;
-  //printf("MEM_W: waddr = %llx, offset = %d, len = %d, wdata = %016llx\n",waddr,offset,len,wdata);
-  paddr_write((waddr & ~0x7ull) + offset, len, wdata);
+  if(waddr == SERIAL_PORT){
+    putchar(wdata & 0xff);
+    #ifdef CONFIG_DIFFTEST
+      difftest_skip_ref();
+    #endif
+    return;
+  }else{
+    int len = (int)DWHB;
+    int offset = (int)shift >> 3;
+    //printf("MEM_W: waddr = %llx, offset = %d, len = %d, wdata = %016llx\n",waddr,offset,len,wdata);
+    paddr_write((waddr & ~0x7ull) + offset, len, wdata);
+  }
+
 }
 
 /***************paddr.c***************/
@@ -239,15 +269,22 @@ void init_mem()
   }
 }
 
+static void out_of_bound(paddr_t addr) {
+  printf("address = 0x%x is out of bound\n",addr);
+}
+
 word_t paddr_read(paddr_t addr, int len)
 {
 #ifdef CONFIG_MTRACE
   printf("MEM fetch: Load address is %x\n", addr);
 #endif
-  if (in_pmem(addr))
+  if (in_pmem(addr)){
     return pmem_read(addr, len);
-  // IFDEF(CONFIG_DEVICE, return mmio_read(addr, len));
-  // out_of_bound(addr);
+  }
+  #ifdef CONFIG_DEVICE
+    return mmio_read(addr, len);
+  #endif
+  out_of_bound(addr);
   return 0;
 }
 
@@ -261,8 +298,10 @@ void paddr_write(paddr_t addr, int len, word_t data)
     pmem_write(addr, len, data);
     return;
   }
-  // IFDEF(CONFIG_DEVICE, mmio_write(addr, len, data); return);
-  // out_of_bound(addr);
+  #ifdef CONFIG_DEVICE
+    mmio_write(addr, len, data); return;
+  #endif
+  out_of_bound(addr);
 }
 
 static word_t pmem_read(paddr_t addr, int len)
@@ -454,24 +493,30 @@ static void execute(uint64_t n)
   {
     top->clk = 0;
     top->eval();
+    #ifdef CONFIG_WAVE
     tfp->dump(simtime);
+    #endif
     simtime++;
     top->clk = 1;
     top->eval();
+    #ifdef CONFIG_WAVE
     tfp->dump(simtime);
+    #endif
     simtime++;
     // g_nr_guest_inst ++; //用于记录客户指令的计数器
     exec_once(&s, top);
     trace_and_difftest(&s);
-    if(NPC_STATE == NPC_DUMP){
+    if(NPC_STATE == NPC_DUMP || NPC_STATE == NPC_STOP){
       return;
     }
+    get_time();
     // IFDEF(CONFIG_DEVICE, device_update());
   }
 }
 
 static void exec_once(Decode *s, Vtop *top)
 {
+  cpu_gpr[32] = cpu_pc;
   s->pc = cpu_pc; // 把PC保存到decode结构s的pc和static next pc中
   s->snpc = cpu_pc;
   s->isa.inst.val = cpu_inst;
@@ -634,10 +679,10 @@ void sdb_mainloop()
       args = NULL;
     }
 
-    /*#ifdef CONFIG_DEVICE
-        extern void sdl_clear_event_queue();
+    #ifdef CONFIG_DEVICE
+        void sdl_clear_event_queue();
         sdl_clear_event_queue();
-    #endif */
+    #endif
 
     int i;
     for (i = 0; i < NR_CMD; i++)
@@ -736,6 +781,7 @@ void (*ref_difftest_raise_intr)(uint64_t NO) = NULL;
 #ifdef CONFIG_DIFFTEST
 
 static bool is_skip_ref = false;
+static bool is_last_skip_ref = false;
 static int skip_dut_nr_inst = 0;
 
 void difftest_skip_ref()
@@ -804,8 +850,14 @@ void difftest_step(vaddr_t pc)
   if (is_skip_ref)
   {
     // to skip the checking of an instruction, just copy the reg state to reference design
-    ref_difftest_regcpy(cpu_gpr, DIFFTEST_TO_REF);
+    is_last_skip_ref = true;
     is_skip_ref = false;
+    return;
+  }
+
+  if(is_last_skip_ref){
+    ref_difftest_regcpy(cpu_gpr, DIFFTEST_TO_REF);
+    is_last_skip_ref = false;
     return;
   }
 
@@ -820,124 +872,3 @@ void init_difftest(char *ref_so_file, long img_size, int port)
 {
 }
 #endif
-
-/***************device***************/
-static inline bool map_inside(IOMap *map, paddr_t addr) {
-  return (addr >= map->low && addr <= map->high);
-}
-
-static inline int find_mapid_by_addr(IOMap *maps, int size, paddr_t addr) {
-  int i;
-  for (i = 0; i < size; i ++) {
-    if (map_inside(maps + i, addr)) {
-      difftest_skip_ref();
-      return i;
-    }
-  }
-  return -1;
-}
-
-/***************map.c***************/
-uint8_t* new_space(int size) {
-  uint8_t *p = p_space;
-  // page aligned;
-  size = (size + (PAGE_SIZE - 1)) & ~PAGE_MASK; //1ul代表usigned_long 1, 把不足一页的尺寸补足
-  p_space += size;
-  assert(p_space - io_space < IO_SPACE_MAX);
-  return p;
-}
-
-static void check_bound(IOMap *map, paddr_t addr) {
-  if (map == NULL) {
-    Assert(map != NULL, "address (" FMT_PADDR ") is out of bound at pc = " FMT_WORD, addr, cpu.pc);
-  } else {
-    Assert(addr <= map->high && addr >= map->low,
-        "address (" FMT_PADDR ") is out of bound {%s} [" FMT_PADDR ", " FMT_PADDR "] at pc = " FMT_WORD,
-        addr, map->name, map->low, map->high, cpu.pc);
-  }
-}
-
-static void invoke_callback(io_callback_t c, paddr_t offset, int len, bool is_write) {
-  if (c != NULL) { c(offset, len, is_write); }  //回调函数的三个参数:io偏移,也即需要进行io的地址; 数据的长度; 数据流的方向
-}
-
-void init_map() { //io映射的初始化
-  io_space = malloc(IO_SPACE_MAX); //为io分配最大空间
-  assert(io_space);
-  p_space = io_space;
-}
-
-word_t map_read(paddr_t addr, int len, IOMap *map) {
-  assert(len >= 1 && len <= 8);
-  check_bound(map, addr); //检查给定地址在当前io映射中是否越界
-  paddr_t offset = addr - map->low;
-  invoke_callback(map->callback, offset, len, false); // prepare data to read
-  word_t ret = host_read(map->space + offset, len);
-  return ret;
-}
-
-void map_write(paddr_t addr, int len, word_t data, IOMap *map) {
-  assert(len >= 1 && len <= 8);
-  check_bound(map, addr);
-  paddr_t offset = addr - map->low;
-  host_write(map->space + offset, len, data);
-  invoke_callback(map->callback, offset, len, true);
-}
-
-
-/***************mmio.c***************/
-static IOMap* fetch_mmio_map(paddr_t addr) { //根据地址返回对应的io映射
-  int mapid = find_mapid_by_addr(maps, nr_map, addr);
-  if(mapid == -1){
-    printf("Wrong device addr is 0x%x\n",addr);
-  }else{
-    #ifdef CONFIG_DTRACE
-    printf("Fetch device: %s at address: 0x%x\n",maps[mapid].name,addr);
-    #endif
-  }
-  return (mapid == -1 ? NULL : &maps[mapid]);
-}
-
-static void report_mmio_overlap(const char *name1, paddr_t l1, paddr_t r1,
-    const char *name2, paddr_t l2, paddr_t r2) {
-  panic("MMIO region %s@[" FMT_PADDR ", " FMT_PADDR "] is overlapped "
-               "with %s@[" FMT_PADDR ", " FMT_PADDR "]", name1, l1, r1, name2, l2, r2);
-}
-
-/* device interface */
-void add_mmio_map(const char *name, paddr_t addr, void *space, uint32_t len, io_callback_t callback) {
-  assert(nr_map < NR_MAP); //map的数量有限制
-  paddr_t left = addr, right = addr + len - 1;
-  if (in_pmem(left) || in_pmem(right)) {
-    report_mmio_overlap(name, left, right, "pmem", PMEM_LEFT, PMEM_RIGHT);
-  }
-  for (int i = 0; i < nr_map; i++) {
-    if (left <= maps[i].high && right >= maps[i].low) {
-      report_mmio_overlap(name, left, right, maps[i].name, maps[i].low, maps[i].high);
-    }
-  }
-
-  maps[nr_map] = (IOMap){ .name = name, .low = addr, .high = addr + len - 1,
-    .space = space, .callback = callback };
-  Log("Add mmio map '%s' at [" FMT_PADDR ", " FMT_PADDR "]",
-      maps[nr_map].name, maps[nr_map].low, maps[nr_map].high);
-
-  nr_map ++;
-}
-
-/* bus interface */
-word_t mmio_read(paddr_t addr, int len) {
-  return map_read(addr, len, fetch_mmio_map(addr));
-}
-
-void mmio_write(paddr_t addr, int len, word_t data) {
-  map_write(addr, len, data, fetch_mmio_map(addr));
-}
-
-/***************device.c***************/
-void init_device() {;
-  init_map();
-  init_serial();
-  init_timer();
-}
-

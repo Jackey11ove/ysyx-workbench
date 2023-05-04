@@ -1,5 +1,5 @@
 module shifter(
-    input wire [8 :0] shifter_op,
+    input wire [5 :0] shifter_op,
     input wire [63:0] shifter_src1,
     input wire [63:0] shifter_src2,
 
@@ -12,9 +12,7 @@ wire op_sra;
 wire op_sllw;
 wire op_srlw;
 wire op_sraw;
-wire op_SLL;
-wire op_SRL;
-wire op_SRA;
+
 
 assign op_sll  = shifter_op[0];
 assign op_srl  = shifter_op[1];
@@ -22,9 +20,6 @@ assign op_sra  = shifter_op[2];
 assign op_sllw = shifter_op[3];
 assign op_srlw = shifter_op[4];
 assign op_sraw = shifter_op[5];
-assign op_SLL  = shifter_op[6];
-assign op_SRL  = shifter_op[7];
-assign op_SRA  = shifter_op[8];
 
 wire [31:0] shifter_src1_32;
 
@@ -37,13 +32,10 @@ wire [63:0] srlw_result;
 wire [31:0] srlw_mid;
 wire [63:0] sraw_result;
 wire [31:0] sraw_mid;
-wire [63:0] SLL_result;
-wire [63:0] SRL_result;
-wire [63:0] SRA_result;
 
-assign sll_result = shifter_src1 <<  shifter_src2[4:0];
-assign srl_result = shifter_src1 >>  shifter_src2[4:0];
-assign sra_result = shifter_src1 >>> shifter_src2[4:0];
+assign sll_result = shifter_src1 <<  shifter_src2[5:0];
+assign srl_result = shifter_src1 >>  shifter_src2[5:0];
+assign sra_result = $signed(shifter_src1) >>> shifter_src2[5:0];
 
 assign shifter_src1_32 = shifter_src1[31:0];
 assign sllw_mid = shifter_src1_32 <<  shifter_src2[4:0];
@@ -53,19 +45,12 @@ assign srlw_result = { {32{srlw_mid[31]}},srlw_mid };
 assign sraw_mid = $signed(shifter_src1_32) >>> shifter_src2[4:0];
 assign sraw_result = { {32{sraw_mid[31]}},sraw_mid };
 
-assign SLL_result = shifter_src1 <<  shifter_src2[5:0];
-assign SRL_result = shifter_src1 >>  shifter_src2[5:0];
-assign SRA_result = shifter_src1 >>> shifter_src2[5:0];
 
 assign shifter_result = ({64{op_sll}} & sll_result)
                       | ({64{op_srl}} & srl_result)
                       | ({64{op_sra}} & sra_result)
                       | ({64{op_sllw}} & sllw_result)
                       | ({64{op_srlw}} & srlw_result)
-                      | ({64{op_sraw}} & sraw_result)
-                      | ({64{op_SLL}} & SLL_result)
-                      | ({64{op_SRL}} & SRL_result)
-                      | ({64{op_SRA}} & SRA_result);
-
+                      | ({64{op_sraw}} & sraw_result);
 
 endmodule

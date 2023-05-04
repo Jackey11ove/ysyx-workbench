@@ -7,7 +7,7 @@ module EXU (
     input wire [63:0] oprand2,
 
     input wire [13:0] alu_op,
-    input wire [8 :0] shifter_op,
+    input wire [5 :0] shifter_op,
     input wire Is_alu,
     input wire RWI_type,
 
@@ -17,6 +17,9 @@ module EXU (
     input wire [3 :0] DWHB,
     input wire [7 :0] mask,
     input wire [63:0] LS_addr,
+
+    input wire Is_csr,
+    input wire [63:0] csr_result,
 
     output wire [63:0] exu_result
 );
@@ -40,6 +43,10 @@ wire [15:0] lh_data;
 wire [31:0] lw_data;
 wire [63:0] ld_data;
 wire [63:0] Load_result;
+
+wire [63:0] csr_rdata;
+wire [63:0] csr_wdata1;
+wire [63:0] csr_wdata2;
 
 assign alu_src1 = oprand1;
 assign alu_src2 = oprand2;
@@ -74,11 +81,12 @@ assign lb_data = Load_shifted_data[7 :0];
 assign lh_data = Load_shifted_data[15:0];
 assign lw_data = Load_shifted_data[31:0];
 assign ld_data = Load_shifted_data[63:0];
-assign Load_result = (Load && DWHB[0])? { {56{lb_data[7]}},lb_data } : (Loadu && DWHB[0])? { 56'b0,lb_data } :
+assign Load_result = (Load && DWHB[0])? { {56{lb_data[ 7]}},lb_data } : (Loadu && DWHB[0])? { 56'b0,lb_data } :
                      (Load && DWHB[1])? { {48{lh_data[15]}},lh_data } : (Loadu && DWHB[1])? { 48'b0,lh_data } :
-                     (Load && DWHB[2])? { {32{lw_data[31]}},lw_data } :
+                     (Load && DWHB[2])? { {32{lw_data[31]}},lw_data } : (Loadu && DWHB[2])? { 32'b0,lw_data } :
                      (Load && DWHB[3])? ld_data : 64'b0;
 
-assign exu_result = (Load | Loadu)? Load_result : RWI_type? RW_result : Is_alu? alu_result : shifter_result;
+
+assign exu_result = Is_csr? csr_result : (Load | Loadu)? Load_result : RWI_type? RW_result : Is_alu? alu_result : shifter_result;
 
 endmodule

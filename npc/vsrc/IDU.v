@@ -1,4 +1,6 @@
 module IDU(
+    input  wire clk,
+    input  wire reset,
     input  wire [31:0] Instruction,
     input  reg  [63:0] pc,
 
@@ -12,7 +14,7 @@ module IDU(
     output wire [63:0] oprand1,
     output wire [63:0] oprand2,
     output wire [13:0] alu_op,
-    output wire [8 :0] shifter_op,
+    output wire [5 :0] shifter_op,
     output wire Is_alu, //告诉执行级阶段操作是alu还是shifter
     output wire RWI_type,
 
@@ -24,7 +26,15 @@ module IDU(
     output wire [63:0] LS_addr,
 
     output wire Is_trans, //判断是否跳转的信号
-    output wire [63:0] trans_addr //跳转的地址
+    output wire [63:0] trans_addr, //跳转的地址
+    
+    output wire Is_csr,
+    output wire [63:0] csr_result,
+
+    output wire Is_expc,
+    output wire [63:0] ex_addr,
+    output wire Is_mretpc,
+    output wire [63:0] mret_addr
 );
 
 wire [63:0] current_pc;
@@ -32,6 +42,7 @@ wire [63:0] current_pc;
 wire [6 :0] opcode;
 wire [2 :0] funct3;
 wire [6 :0] funct7;
+wire [11:0] funct12;
 
 wire [63:0] imm;
 wire [63:0] I_imm;
@@ -94,10 +105,6 @@ wire Inst_slliw;
 wire Inst_srliw;
 wire Inst_sraiw;
 
-wire Inst_SLLI;
-wire Inst_SRLI;
-wire Inst_SRAI;
-
 wire Inst_beq;
 wire Inst_bne;
 wire Inst_blt;
@@ -115,21 +122,38 @@ wire Inst_lh;
 wire Inst_lhu;
 wire Inst_sh;
 wire Inst_lw;
+wire Inst_lwu;
 wire Inst_sw;
 wire Inst_ld;
 wire Inst_sd;
+
+wire Inst_ecall;
+wire Inst_mret;
+wire Inst_csrrs;
+wire Inst_csrrw;
+wire Inst_csrrc;
 
 wire [63:0] jump_addr;
 wire [63:0] j_addr;
 wire [63:0] branch_addr;
 wire Is_branch;
 
+wire [1 :0] csr_raddr;
+wire [63:0] csr_rdata;
+wire [1 :0] csr_waddr1;
+wire [63:0] csr_wdata1;
+wire [1 :0] csr_waddr2;
+wire [63:0] csr_wdata2;
+wire csr_wen1;
+wire csr_wen2;
+
 //decode
 assign current_pc = pc;
 
-assign opcode = Instruction[6 :0];
-assign funct3 = Instruction[14:12];
-assign funct7 = Instruction[31:25];
+assign opcode  = Instruction[6 :0];
+assign funct3  = Instruction[14:12];
+assign funct7  = Instruction[31:25];
+assign funct12 = Instruction[31:20];
 
 assign R_type  = (opcode == 7'b0110011);
 assign RW_type = (opcode == 7'b0111011);
@@ -152,8 +176,6 @@ assign rs2 = Instruction[24:20];
 assign rf_dest = Instruction[11:7];
 assign rf_we = !(B_type | S_type);
 
-assign Inst_ebreak = Instruction == 32'b00000000000100000000000001110011;
-
 assign Inst_auipc  = (opcode == 7'b0010111);
 assign Inst_lui    = (opcode == 7'b0110111);
 
@@ -163,9 +185,9 @@ assign Inst_sltiu  = (opcode == 7'b0010011) && (funct3 == 3'b011);
 assign Inst_xori   = (opcode == 7'b0010011) && (funct3 == 3'b100);
 assign Inst_ori    = (opcode == 7'b0010011) && (funct3 == 3'b110);
 assign Inst_andi   = (opcode == 7'b0010011) && (funct3 == 3'b111);
-assign Inst_slli   = (opcode == 7'b0010011) && (funct3 == 3'b001) && (funct7 == 7'b0000000);
-assign Inst_srli   = (opcode == 7'b0010011) && (funct3 == 3'b101) && (funct7 == 7'b0000000);
-assign Inst_srai   = (opcode == 7'b0010011) && (funct3 == 3'b101) && (funct7 == 7'b0100000);
+assign Inst_slli   = (opcode == 7'b0010011) && (funct3 == 3'b001) && (funct7[6:1] == 6'b000000);
+assign Inst_srli   = (opcode == 7'b0010011) && (funct3 == 3'b101) && (funct7[6:1] == 6'b000000);
+assign Inst_srai   = (opcode == 7'b0010011) && (funct3 == 3'b101) && (funct7[6:1] == 6'b010000);
 
 assign Inst_add    = R_type && (funct3 == 3'b000) && (funct7 == 7'b0000000);
 assign Inst_sub    = R_type && (funct3 == 3'b000) && (funct7 == 7'b0100000);
@@ -199,10 +221,6 @@ assign Inst_slliw  = (opcode == 7'b0011011) && (funct3 == 3'b001) && (funct7 == 
 assign Inst_srliw  = (opcode == 7'b0011011) && (funct3 == 3'b101) && (funct7 == 7'b0000000);
 assign Inst_sraiw  = (opcode == 7'b0011011) && (funct3 == 3'b101) && (funct7 == 7'b0100000);
 
-assign Inst_SLLI   = (opcode == 7'b0010011) && (funct3 == 3'b001) && (funct7[6:1] == 6'b000000);
-assign Inst_SRLI   = (opcode == 7'b0010011) && (funct3 == 3'b101) && (funct7[6:1] == 6'b000000);
-assign Inst_SRAI   = (opcode == 7'b0010011) && (funct3 == 3'b101) && (funct7[6:1] == 6'b010000);
-
 assign Inst_beq    = B_type && (funct3 == 3'b000);
 assign Inst_bne    = B_type && (funct3 == 3'b001);
 assign Inst_blt    = B_type && (funct3 == 3'b100);
@@ -213,16 +231,24 @@ assign Inst_bgeu   = B_type && (funct3 == 3'b111);
 assign Inst_jal    = (opcode == 7'b1101111);
 assign Inst_jalr   = (opcode == 7'b1100111);
 
-assign Inst_lb     = (opcode == 7'b0000011) && (funct3 ==3'b000);
-assign Inst_lbu    = (opcode == 7'b0000011) && (funct3 ==3'b100);
-assign Inst_sb     = (opcode == 7'b0100011) && (funct3 ==3'b000);
-assign Inst_lh     = (opcode == 7'b0000011) && (funct3 ==3'b001);
-assign Inst_lhu    = (opcode == 7'b0000011) && (funct3 ==3'b101);
-assign Inst_sh     = (opcode == 7'b0100011) && (funct3 ==3'b001);
-assign Inst_lw     = (opcode == 7'b0000011) && (funct3 ==3'b010);
-assign Inst_sw     = (opcode == 7'b0100011) && (funct3 ==3'b010);
-assign Inst_ld     = (opcode == 7'b0000011) && (funct3 ==3'b011);
-assign Inst_sd     = (opcode == 7'b0100011) && (funct3 ==3'b011);
+assign Inst_lb     = (opcode == 7'b0000011) && (funct3 == 3'b000);
+assign Inst_lbu    = (opcode == 7'b0000011) && (funct3 == 3'b100);
+assign Inst_sb     = (opcode == 7'b0100011) && (funct3 == 3'b000);
+assign Inst_lh     = (opcode == 7'b0000011) && (funct3 == 3'b001);
+assign Inst_lhu    = (opcode == 7'b0000011) && (funct3 == 3'b101);
+assign Inst_sh     = (opcode == 7'b0100011) && (funct3 == 3'b001);
+assign Inst_lw     = (opcode == 7'b0000011) && (funct3 == 3'b010);
+assign Inst_lwu    = (opcode == 7'b0000011) && (funct3 == 3'b110);
+assign Inst_sw     = (opcode == 7'b0100011) && (funct3 == 3'b010);
+assign Inst_ld     = (opcode == 7'b0000011) && (funct3 == 3'b011);
+assign Inst_sd     = (opcode == 7'b0100011) && (funct3 == 3'b011);
+
+assign Inst_csrrs  = (opcode == 7'b1110011) && (funct3 == 3'b010);
+assign Inst_csrrw  = (opcode == 7'b1110011) && (funct3 == 3'b001);
+assign Inst_csrrc  = (opcode == 7'b1110011) && (funct3 == 3'b011);
+assign Inst_ecall  = Instruction == 32'b00000000000000000000000001110011;
+assign Inst_mret   = Instruction == 32'b00110000001000000000000001110011;
+assign Inst_ebreak = Instruction == 32'b00000000000100000000000001110011;
 
 assign alu_op[0] = Inst_add | Inst_addi | Inst_addiw | Inst_addw | Inst_auipc | Inst_jal | Inst_jalr;
 assign alu_op[1] = Inst_sub | Inst_subw;
@@ -245,9 +271,6 @@ assign shifter_op[2] = Inst_sra | Inst_srai;
 assign shifter_op[3] = Inst_sllw | Inst_slliw;
 assign shifter_op[4] = Inst_srlw | Inst_srliw;
 assign shifter_op[5] = Inst_sraw | Inst_sraiw;
-assign shifter_op[6] = Inst_SLLI;
-assign shifter_op[7] = Inst_SRLI;
-assign shifter_op[8] = Inst_SRAI;
 
 assign oprand1 = (Inst_auipc | Inst_jal | Inst_jalr)? current_pc : rf_src1;
 assign oprand2 = (Inst_jal | Inst_jalr)? 64'h0000000000000004 : (R_type | S_type | RW_type)? rf_src2 : imm;
@@ -262,11 +285,11 @@ assign Is_trans = Inst_jal | Inst_jalr | Is_branch;
 assign trans_addr = Is_branch? branch_addr : jump_addr;
 
 assign Load = Inst_lb | Inst_lh | Inst_lw | Inst_ld;
-assign Loadu = Inst_lbu | Inst_lhu;
+assign Loadu = Inst_lbu | Inst_lhu | Inst_lwu;
 assign Store = Inst_sb | Inst_sh | Inst_sw | Inst_sd;
 assign DWHB[0] = Inst_lb | Inst_lbu | Inst_sb;
 assign DWHB[1] = Inst_lh | Inst_lhu | Inst_sh;
-assign DWHB[2] = Inst_lw | Inst_sw;
+assign DWHB[2] = Inst_lw | Inst_lwu | Inst_sw;
 assign DWHB[3] = Inst_ld | Inst_sd;
 assign LS_addr = rf_src1 + imm;
 
@@ -274,6 +297,22 @@ assign mask = (Inst_lb | Inst_lbu | Inst_sb)? (8'h01<<LS_addr[2:0]) : (Inst_lh |
             : (Inst_lw | Inst_sw)? (8'h0f<<LS_addr[2:0]) : (Inst_ld | Inst_sd)? 8'hff : 8'h0;
 
 
+assign Is_csr = Inst_csrrc | Inst_csrrs | Inst_csrrw;
+assign csr_wen1 = Inst_csrrs | Inst_csrrw | Inst_csrrc | Inst_ecall;
+assign csr_wen2 = Inst_ecall;
+assign csr_raddr = (funct12 == 12'h341 || Inst_mret)? 2'b00 : (funct12 == 12'h300)? 2'b01 : (funct12 == 12'h342)? 2'b10 : (funct12 == 12'h305 || Inst_ecall)? 2'b11 : 2'b0;
+assign csr_waddr1 = ((funct12 == 12'h341 && Is_csr) || Inst_ecall)? 2'b00 : (funct12 == 12'h300 && Is_csr)? 2'b01 : (funct12 == 12'h342 && Is_csr)? 2'b10 : (funct12 == 12'h305 && Is_csr)? 2'b11 : 2'b0;
+assign csr_waddr2 = 2'b10; //专门为写异常号设置的端口
+assign csr_wdata1 = Inst_ecall? current_pc : Inst_csrrs? (rf_src1 | csr_rdata) : Inst_csrrc? (~rf_src1 & csr_rdata) : rf_src1;
+assign csr_wdata2 = Inst_ecall? 64'hb : 64'h0;
+assign csr_result = csr_rdata;
+
+assign Is_expc = Inst_ecall;
+assign ex_addr = csr_rdata; //异常地址入口
+assign Is_mretpc = Inst_mret;
+assign mret_addr = csr_rdata + 4; //原先存入的pc+4
+
+csr u_csr(clk, reset, csr_raddr, csr_rdata, csr_waddr1, csr_wdata1, csr_wen1, csr_waddr2, csr_wdata2, csr_wen2);
 EBREAK u_EBREAK(Inst_ebreak, current_pc);
 
 endmodule
