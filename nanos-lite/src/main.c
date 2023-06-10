@@ -23,7 +23,7 @@ int main() {
   init_irq(); //最终会调用cte_init函数
 #endif
 
-  init_fs();
+  //init_fs();
 
   init_proc();
 

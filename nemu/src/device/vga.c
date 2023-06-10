@@ -31,7 +31,7 @@ static uint32_t screen_size() {
   return screen_width() * screen_height() * sizeof(uint32_t); //宽400高300,每个像素占32字节
 }
 
-static void *vmem = NULL;
+static void *vmem = NULL; //显存
 static uint32_t *vgactl_port_base = NULL;
 
 #ifdef CONFIG_VGA_SHOW_SCREEN

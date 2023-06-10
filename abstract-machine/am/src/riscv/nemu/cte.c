@@ -8,7 +8,13 @@ Context* __am_irq_handle(Context *c) {
   if (user_handler) { //这里的user_handler就是传入的do_event
     Event ev = {0};
     switch (c->mcause) {
-      case 0xb: ev.event = EVENT_YIELD; break; 
+      case 0xb: 
+        if(c->GPR1 == -1){
+          ev.event = EVENT_YIELD;
+        }else{
+          ev.event = EVENT_SYSCALL;
+        }  
+        break;
       default: ev.event = EVENT_ERROR; break;
     }
     c = user_handler(ev, c);

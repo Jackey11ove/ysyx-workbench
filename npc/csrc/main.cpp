@@ -25,19 +25,25 @@
 // 宏定义
 #define ARRLEN(arr) (int)(sizeof(arr) / sizeof(arr[0]))
 //#define CONFIG_ITRACE
-#define CONFIG_WAVE
-#define CONFIG_DIFFTEST
+//#define CONFIG_MTRACE
+//#define CONFIG_WAVE
+#define HAS_GUI
+//#define CONFIG_DIFFTEST
 #define CONFIG_IRINGBUF
-#define CONFIG_MSIZE 0x2000000
+#define CONFIG_MSIZE 0x8000000
 #define CONFIG_MBASE 0x80000000
 #define DEVICE_BASE  0xa0000000
 #define RTC_ADDR (DEVICE_BASE + 0x00000048)
 #define SERIAL_PORT (DEVICE_BASE + 0x000003f8)
+#define VGACTL_ADDR (DEVICE_BASE + 0x00000100)
+#define SYNC_ADDR (VGACTL_ADDR + 4)
+#define FB_ADDR (DEVICE_BASE + 0x1000000)
 #define RESET_VECTOR (uint32_t) CONFIG_MBASE // 客户程序在内存中的初始位置
 #define PG_ALIGN __attribute((aligned(4096)))
 #define FMT_WORD "0x%016" PRIx64
 #define MAX_INST_TO_PRINT 10000
-
+#define SCREEN_W 400
+#define SCREEN_H 300
 
 // 类型定义
 typedef uint64_t word_t;
@@ -67,6 +73,7 @@ typedef struct
 {
   word_t gpr[32];
   vaddr_t pc;
+  word_t csr[4];
 } CPU_state; // 一个PC寄存器，32个通用寄存器
 
 enum
@@ -92,10 +99,14 @@ static char *img_file = NULL;                    // 装载程序镜像的文件�
 static const char *diff_so_file = "/home/jackey/ysyx-workbench/nemu/build/riscv64-nemu-interpreter-so";
 static int difftest_port = 1234;
 uint64_t *cpu_gpr = NULL;
+uint64_t *cpu_csr = NULL;
 uint64_t cpu_pc;
 uint32_t cpu_inst;
+bool ws_valid;
 static bool g_print_step = false;
 static int NPC_STATE = NPC_RUN;
+static void *vmem = NULL; //显存
+static uint32_t *vgactl_port_base = NULL;
 
 // 函数定义
 uint8_t *guest_to_host(paddr_t paddr) { return pmem + paddr - CONFIG_MBASE; } // paddr是物理地址，此函数由物理地址返回虚拟地址
@@ -112,6 +123,7 @@ static inline void host_write(void *addr, int len, word_t data);
 word_t vaddr_ifetch(vaddr_t addr, int len);
 void init_monitor(int argc, char *argv[]);
 void init_rand();
+
 static long load_img();
 static int parse_args(int argc, char *argv[]);
 void cpu_exec(uint64_t n);
@@ -124,6 +136,10 @@ void init_disasm(const char *triple);
 void difftest_step(vaddr_t pc);
 void init_difftest(const char *ref_so_file, long img_size, int port);
 void difftest_skip_ref(void);
+#endif
+#ifdef HAS_GUI
+void init_vga();
+void vga_update_screen();
 #endif
 #ifdef CONFIG_IRINGBUF
 static void exec_Iringbuf(Decode *s);
@@ -208,6 +224,11 @@ extern "C" void set_gpr_ptr(const svOpenArrayHandle r)
   cpu_gpr = (uint64_t *)(((VerilatedDpiOpenVar *)r)->datap());
 }
 
+extern "C" void set_csr_ptr(const svOpenArrayHandle r)
+{
+  cpu_csr = (uint64_t *)(((VerilatedDpiOpenVar *)r)->datap());
+}
+
 extern "C" void get_cpu_pc(long long pc)
 {
   cpu_pc = (uint64_t)pc;
@@ -218,9 +239,13 @@ extern "C" void get_cpu_inst(int inst)
   cpu_inst = (uint32_t)inst;
 }
 
-extern "C" void inst_fetch(long long raddr, int *rdata)
+extern "C" void get_cpu_ws_valid(char valid){
+  ws_valid = (bool)valid;
+}
+
+extern "C" void inst_fetch(long long raddr, long long *rdata)
 {
-  *rdata = paddr_read(raddr, 4);
+  *rdata = paddr_read(raddr & ~0x7ull, 8);
 }
 
 extern "C" void mem_read(long long raddr, long long *rdata)
@@ -231,8 +256,14 @@ extern "C" void mem_read(long long raddr, long long *rdata)
     #ifdef CONFIG_DIFFTEST
       difftest_skip_ref();
     #endif
+  }else if(raddr == VGACTL_ADDR){
+    *(uint32_t*)rdata = vgactl_port_base[0];
+    #ifdef CONFIG_DIFFTEST
+      difftest_skip_ref();
+    #endif
   }else{
     *rdata = paddr_read(raddr & ~0x7ull, 8);
+    //printf("MEM_R: read addr = 0x%llx, rdata = 0x%llx\n",raddr, *rdata);
   }
 
 }
@@ -244,6 +275,19 @@ extern "C" void mem_write(long long waddr, long long wdata, char shift, char DWH
   // 如`wmask = 0x3`代表只写入最低2个字节, 内存中的其它字节保持不变
   if(waddr == SERIAL_PORT){
     putchar(wdata & 0xff);
+    #ifdef CONFIG_DIFFTEST
+      difftest_skip_ref();
+    #endif
+    return;
+  }else if(waddr == SYNC_ADDR){
+    vgactl_port_base[1] = wdata;
+    #ifdef CONFIG_DIFFTEST
+      difftest_skip_ref();
+    #endif
+    return;
+  }else if(waddr >= FB_ADDR){
+    uint32_t * p = (uint32_t*)vmem;
+    p[(waddr - FB_ADDR)/4] = wdata;
     #ifdef CONFIG_DIFFTEST
       difftest_skip_ref();
     #endif
@@ -372,6 +416,10 @@ void init_monitor(int argc, char *argv[])
   init_mem();
   long img_size = load_img();
 
+#ifdef HAS_GUI
+  init_vga();
+#endif
+
 #ifdef CONFIG_DIFFTEST
   init_difftest(diff_so_file, img_size, difftest_port);
 #endif
@@ -489,7 +537,7 @@ void cpu_exec(uint64_t n)
 static void execute(uint64_t n)
 {
   Decode s;
-  for (; n > 0; n--)
+  for (; n > 0; )
   {
     top->clk = 0;
     top->eval();
@@ -504,24 +552,33 @@ static void execute(uint64_t n)
     #endif
     simtime++;
     // g_nr_guest_inst ++; //用于记录客户指令的计数器
-    exec_once(&s, top);
-    trace_and_difftest(&s);
+    if(ws_valid){
+      exec_once(&s, top);
+      trace_and_difftest(&s);
+      n--;
+    }
     if(NPC_STATE == NPC_DUMP || NPC_STATE == NPC_STOP){
       return;
     }
     get_time();
-    // IFDEF(CONFIG_DEVICE, device_update());
+    #ifdef HAS_GUI
+      vga_update_screen();
+    #endif
   }
 }
 
 static void exec_once(Decode *s, Vtop *top)
 {
   cpu_gpr[32] = cpu_pc;
+  cpu_gpr[33] = cpu_csr[1];
+  cpu_gpr[34] = cpu_csr[2];
+  cpu_gpr[35] = cpu_csr[3];
+  cpu_gpr[36] = cpu_csr[4];
   s->pc = cpu_pc; // 把PC保存到decode结构s的pc和static next pc中
   s->snpc = cpu_pc;
   s->isa.inst.val = cpu_inst;
   exec_Iringbuf(s);
-  // printf("pc: %lx inst: %08x\n",s->pc,s->isa.inst.val);
+  //printf("pc: %lx inst: %08x\n",s->pc,s->isa.inst.val);
   if (s->pc < 0x80000000)
   {
     printf("PC out of bound!\n");
@@ -679,10 +736,10 @@ void sdb_mainloop()
       args = NULL;
     }
 
-    #ifdef CONFIG_DEVICE
+    /*#ifdef CONFIG_DEVICE
         void sdl_clear_event_queue();
         sdl_clear_event_queue();
-    #endif
+    #endif*/
 
     int i;
     for (i = 0; i < NR_CMD; i++)
@@ -744,6 +801,10 @@ const char *regs[] = {
     "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
     "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"};
 
+const char *csr_regs[] = {
+    "mepc", "mstatus", "mcause", "mtvec"
+};
+
 void isa_reg_display()
 {
   for (int idx = 0; idx < 32; idx++)
@@ -755,6 +816,12 @@ void isa_reg_display()
       printf("\n");
     }
   }
+  //csr
+  for(int idx = 0; idx < 4; idx++){
+    const char* csr_name = csr_regs[idx];
+    printf("%s  0x%8lx   ", csr_name, cpu_gpr[idx+33]);
+  }
+  printf("\n");
 }
 
 void isa_ref_r_display(CPU_state ref_r)
@@ -769,7 +836,11 @@ void isa_ref_r_display(CPU_state ref_r)
       printf("\n");
     }
   }
-  printf("ref_pc: %lx\n", ref_r.pc);
+  for(int idx = 0; idx < 4; idx++){
+    const char* csr_name = csr_regs[idx];
+    printf("%s  0x%8lx   ", csr_name, ref_r.csr[idx]);
+  }
+  printf("\nref_pc: %lx\n", ref_r.pc);
 }
 
 /***************dut.c***************/
@@ -792,7 +863,7 @@ void difftest_skip_ref()
 
 bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc)
 {
-  if (memcmp(ref_r, cpu_gpr, 32 * 8) == 0 && ref_r->pc == pc)
+  if (memcmp(ref_r, cpu_gpr, 34 * 8) == 0 && ref_r->pc == pc)
   {
     return true;
   }
@@ -806,6 +877,10 @@ void init_difftest(const char *ref_so_file, long img_size, int port)
 {
   assert(ref_so_file != NULL);
   cpu_gpr[32] = top->inst_sram_addr;
+  /*cpu_gpr[34] = 0;
+  cpu_gpr[35] = 0xa00001800;
+  cpu_gpr[36] = 0;
+  cpu_gpr[37] = 0;*/
 
   void *handle;
   handle = dlopen(ref_so_file, RTLD_LAZY);
@@ -867,8 +942,67 @@ void difftest_step(vaddr_t pc)
   checkregs(&ref_r, pc);
 }
 
-#else
-void init_difftest(char *ref_so_file, long img_size, int port)
-{
+#endif
+
+/***************vga.c***************/
+#ifdef HAS_GUI
+
+static SDL_Renderer *renderer = NULL; //SDL_Renderer是一个用于渲染2D图像的对象,renderer意思是渲染器
+static SDL_Texture *texture = NULL; //SDL_Texture是一个包含像素数据的对象，可以被用于渲染2D图像
+
+uint8_t * new_space(int size){
+  uint8_t* p = (uint8_t*)malloc(size);
+  assert(p!=NULL);
+  return p;
 }
+
+static uint32_t screen_width() {
+  return SCREEN_W; //400
+}
+
+static uint32_t screen_height() {
+  return SCREEN_H; //300
+}
+
+static uint32_t screen_size() {
+  return screen_width() * screen_height() * sizeof(uint32_t); //宽400高300,每个像素占32字节
+}
+
+static void init_screen() {
+  SDL_Window *window = NULL;
+  char title[128];
+  sprintf(title, "riscv64-NPC");
+  SDL_Init(SDL_INIT_VIDEO);
+  SDL_CreateWindowAndRenderer(SCREEN_W * 2,SCREEN_H * 2, 0, &window, &renderer); //前两个参数400*2和300*2代表的是窗口的参数,0指的是渲染器的默认类型
+  SDL_SetWindowTitle(window, title); //为窗口设置标题
+  texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+      SDL_TEXTUREACCESS_STATIC, SCREEN_W, SCREEN_H); //设置一个纹理,与相应的渲染器挂钩,设置纹理格式为ARG8888,访问方式为静态
+}
+
+static inline void update_screen() {
+  SDL_UpdateTexture(texture, NULL, vmem, SCREEN_W * sizeof(uint32_t)); //函数从一个内存地址（vmem）中将像素数据写入到一个 SDL 纹理对象（texture）中
+  SDL_RenderClear(renderer); //这个函数清除绘制目标（renderer）上所有的渲染信息，准备开始新一轮的渲染操作。
+  SDL_RenderCopy(renderer, texture, NULL, NULL); //这个函数从纹理对象（texture）中复制像素数据到渲染目标（renderer）中，实现了将屏幕上显示的图像与纹理对象内容同步的效果
+  SDL_RenderPresent(renderer); //这个函数将最终的渲染结果呈现在屏幕上
+}
+
+void vga_update_screen() {
+  // TODO: call `update_screen()` when the sync register is non-zero,
+  // then zero out the sync register
+  uint32_t sync_reg = vgactl_port_base[1];
+  if(sync_reg){
+    update_screen();
+    vgactl_port_base[1] = 0;
+  }
+}
+
+void init_vga() {
+  vgactl_port_base = (uint32_t *)new_space(8);
+  vgactl_port_base[0] = (screen_width() << 16) | screen_height(); //实现了屏幕大小寄存器
+
+  vmem = new_space(screen_size());
+  init_screen();
+  memset(vmem, 0, screen_size());
+}
+
 #endif

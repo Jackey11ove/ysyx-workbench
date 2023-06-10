@@ -6,6 +6,7 @@
 
 #define STACK_SIZE (8 * PGSIZE)
 
+
 typedef union {
   uint8_t stack[STACK_SIZE] PG_ALIGN;
   struct {
@@ -17,5 +18,8 @@ typedef union {
 } PCB;
 
 extern PCB *current;
+
+size_t ramdisk_read(void *buf, size_t offset, size_t len);
+void naive_uload(PCB *pcb, const char *filename);
 
 #endif

@@ -12,28 +12,31 @@
 //   gg - first page
 
 // number of slides
-const int N = 10;
+const int N = 2;
 // slides path pattern (starts from 0)
 const char *path = "/share/slides/slides-%d.bmp";
 
 static SDL_Surface *slide = NULL;
 static int cur = 0;
 
+//render函数是用来将画布上的ppt输出到屏幕上
 void render() {
   if (slide) {
     SDL_FreeSurface(slide);
   }
   char fname[256];
-  sprintf(fname, path, cur);
+  sprintf(fname, path, cur); //cur从0开始,path中有%d作为传参形式,一张一张展示幻灯片
+  printf("fname: %s\n",fname);
   slide = SDL_LoadBMP(fname);
   assert(slide);
   SDL_UpdateRect(slide, 0, 0, 0, 0);
 }
 
-void prev(int rep) {
+void prev(int rep) { //跳回之前的ppt
   if (rep == 0) rep = 1;
   cur -= rep;
   if (cur < 0) cur = 0;
+  printf("pre: cur = %d, rep = %d\n",cur,rep);
   render();
 }
 
@@ -57,6 +60,8 @@ int main() {
     SDL_WaitEvent(&e);
 
     if (e.type == SDL_KEYDOWN) {
+      printf("cur = %d\n",cur);
+      printf("rep = %d\n",rep);
       switch(e.key.keysym.sym) {
         case SDLK_0: rep = rep * 10 + 0; break;
         case SDLK_1: rep = rep * 10 + 1; break;

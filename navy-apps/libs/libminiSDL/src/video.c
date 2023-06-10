@@ -3,16 +3,89 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-void SDL_BlitSurface(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect) {
+void SDL_BlitSurface(SDL_Surface *src, SDL_Rect *srcrect, SDL_Surface *dst, SDL_Rect *dstrect) { //s是source,d是dest
   assert(dst && src);
   assert(dst->format->BitsPerPixel == src->format->BitsPerPixel);
+  int sx,sy,w,h,dx,dy; //由于两个矩形的尺寸一定相同,只需要一个w,h就行了
+  if(srcrect == NULL){
+    sx = 0;
+    sy = 0;
+    w = src->w;
+    h = src->h;
+  }else{
+    sx = srcrect->x;
+    sy = srcrect->y;
+    w = srcrect->w;
+    h = srcrect->h;
+  }
+
+  if(dstrect == NULL){
+    dx = 0;
+    dy = 0;
+  }else{
+    dx = dstrect->x;
+    dy = dstrect->y;
+  }
+
+  if(src->format->BitsPerPixel == 32){
+    for(int i = 0; i < w; i ++){
+      for(int j = 0; j < h; j ++){
+        *( (uint32_t*)dst->pixels + (dy + j) * dst->w + dx + i ) = *( (uint32_t*)src->pixels + (sy + j) * src->w + sx + i );
+      }
+    }
+  }else if(src->format->BitsPerPixel == 8){ //此时pixel中记录的是调色板的8位下标
+    for(int i = 0; i < w; i ++){
+      for(int j = 0; j < h; j ++){
+        *( dst->pixels + (dy + j) * dst->w + dx + i ) = *( src->pixels + (sy + j) * src->w + sx + i );
+      }
+    }
+  }
 }
 
-void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color) {
+void SDL_FillRect(SDL_Surface *dst, SDL_Rect *dstrect, uint32_t color) { //此函数是填充画布上的一个矩形
+  int x,y,w,h;
+  if(dstrect == NULL){
+    x = 0;
+    y = 0;
+    w = dst->w; //画布的宽
+    h = dst->h; //画布的高
+  }else{
+    x = dstrect->x;
+    y = dstrect->y;
+    w = dstrect->w;
+    h = dstrect->h;
+  }
+  for(int i = 0; i < w; i++){
+    for(int j = 0; j < h; j++){
+      *( (uint32_t *)dst->pixels + (y + j) * w + x + i ) = color;
+    }
+  }
 }
 
-void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h) {
+void SDL_UpdateRect(SDL_Surface *s, int x, int y, int w, int h) { //此函数是将画布上的矩形输出到屏幕上
+  if(x == 0 && y == 0 && w == 0 && h == 0){
+    w = s->w;
+    h = s->h;
+  }
+
+  if(s->format->BytesPerPixel == 4){
+    NDL_DrawRect((uint32_t *)s->pixels, x, y, w, h);
+  }
+  else if(s->format->BytesPerPixel == 1)
+  {
+    uint32_t * pal_color = (uint32_t *)malloc(sizeof(uint32_t) * w * h);
+    for(int i = 0; i < w; i ++){
+      for(int j = 0; j < h; j ++){
+        int idx = (int)(s->pixels)[(y + j) * s->w + x + i];
+        SDL_Color single_color = s->format->palette->colors[idx];
+        pal_color[j * w + i] = ( (uint32_t)single_color.a << 24 ) | ( (uint32_t)single_color.r << 16 ) | ( (uint32_t)single_color.g << 8 ) | ( (uint32_t)single_color.b );
+      }
+    }
+    NDL_DrawRect(pal_color,x,y,w,h);
+    free(pal_color);
+  }
 }
 
 // APIs below are already implemented.
