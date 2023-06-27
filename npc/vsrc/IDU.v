@@ -40,6 +40,11 @@ module IDU(
     output wire [5 :0] shifter_op,
     output wire        Is_alu, //告诉执行级阶段操作是alu还是shifter
     output wire        RWI_type,
+    output wire        op_mul,
+    output wire        op_div,
+    output wire        op_divu,
+    output wire        op_rem,
+    output wire        op_remu,
 
     output wire        Load,
     output wire        Loadu,
@@ -399,7 +404,8 @@ assign Is_alu = alu_op != 14'b0;
 assign j_addr = Inst_jal? (current_pc+imm) : Inst_jalr? op1_from_rf + imm : 64'b0;
 assign jump_addr = {j_addr[63:2],2'b0};
 assign branch_addr = (current_pc+imm) & ~64'h0000000000000003;
-assign Is_branch = ( Inst_beq && (op1_from_rf == op2_from_rf) ) || ( Inst_bne && (op1_from_rf != op2_from_rf) ) || ( Inst_blt && ($signed(op1_from_rf)<$signed(op2_from_rf)) )
+//branch信号要判断此时从es阶段前递的操作数是否有效，如果是乘除法指令有可能一开始取的操作数并非最终正确的操作,需要判断此时操作数是否是从es前递回的，以及es是否运算完成
+assign Is_branch = ((es_addr1_equal | es_addr2_equal) && !es_allowin) ? 1'b0 : ( Inst_beq && (op1_from_rf == op2_from_rf) ) || ( Inst_bne && (op1_from_rf != op2_from_rf) ) || ( Inst_blt && ($signed(op1_from_rf)<$signed(op2_from_rf)) )
                 || ( Inst_bge && ($signed(op1_from_rf)>=$signed(op2_from_rf)) ) || ( Inst_bltu && (op1_from_rf<op2_from_rf) ) || ( Inst_bgeu && (op1_from_rf>=op2_from_rf) );
 assign Is_trans = (Inst_jal | Inst_jalr | Is_branch) && ds_valid;
 assign trans_addr = Is_branch? branch_addr : jump_addr;
@@ -407,6 +413,11 @@ assign branch_taken_cancel = (Is_trans | ds_trans | Is_expc | Is_mretpc) && fs_t
 
 assign es_related_cancel = rf_raddr1_es_mem_related || rf_raddr2_es_mem_related; //此信号是一个特殊情况的处理，当ds产生和es,ms的数据相关时
 
+assign op_mul = Inst_mul | Inst_mulw;
+assign op_div = Inst_div | Inst_divw;
+assign op_divu = Inst_divu | Inst_divuw;
+assign op_rem = Inst_rem | Inst_remw;
+assign op_remu = Inst_remu | Inst_remuw;
 assign Load = Inst_lb | Inst_lh | Inst_lw | Inst_ld;
 assign Loadu = Inst_lbu | Inst_lhu | Inst_lwu;
 assign Store = Inst_sb | Inst_sh | Inst_sw | Inst_sd;

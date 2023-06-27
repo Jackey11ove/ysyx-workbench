@@ -1,5 +1,6 @@
 #include <am.h>
 #include <klib-macros.h>
+#include <stdio.h>
 
 bool __am_has_ioe = false;
 static bool ioe_init_done = false;
@@ -58,6 +59,7 @@ bool ioe_init() {
 static void fail(void *buf) { panic("access nonexist register"); }
 
 void __am_ioe_init() {
+  printf("ioe_init_done = %d\n",ioe_init_done);
   for (int i = 0; i < LENGTH(lut); i++)
     if (!lut[i]) lut[i] = fail;
   __am_timer_init();

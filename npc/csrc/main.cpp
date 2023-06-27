@@ -28,7 +28,7 @@
 //#define CONFIG_MTRACE
 //#define CONFIG_WAVE
 #define HAS_GUI
-//#define CONFIG_DIFFTEST
+#define CONFIG_DIFFTEST
 #define CONFIG_IRINGBUF
 #define CONFIG_MSIZE 0x8000000
 #define CONFIG_MBASE 0x80000000
@@ -863,7 +863,7 @@ void difftest_skip_ref()
 
 bool isa_difftest_checkregs(CPU_state *ref_r, vaddr_t pc)
 {
-  if (memcmp(ref_r, cpu_gpr, 34 * 8) == 0 && ref_r->pc == pc)
+  if (memcmp(ref_r, cpu_gpr, 32 * 8) == 0 && ref_r->pc == pc)
   {
     return true;
   }
