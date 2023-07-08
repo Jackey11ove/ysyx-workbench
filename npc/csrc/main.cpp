@@ -309,7 +309,7 @@ void init_mem()
   int i;
   for (i = 0; i < (int)(CONFIG_MSIZE / sizeof(p[0])); i++)
   {
-    p[i] = rand();
+    p[i] = 0;
   }
 }
 

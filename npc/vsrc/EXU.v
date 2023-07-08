@@ -186,16 +186,16 @@ shifter u_shifter(es_shifter_op, shifter_src1, shifter_src2, shifter_result);
 mul u_mul(clk, reset, mul_valid, multiplicand, multiplier, mul_ready, mul_out_valid, result_hi, result_lo);
 div u_div(clk, reset, div_valid, dividend, divisor, div_signed, div_ready, div_out_valid, quotient, remainder);
 
-assign RW_result = /*(es_op_div|es_op_divu)? { {32{quotient[31]}},quotient[31:0] } :
-                   (es_op_rem|es_op_remu)? { {32{remainder[31]}},remainder[31:0] } : 
-                                es_op_mul? { {32{result_lo[31]}},result_lo[31:0] } :*/ 
+assign RW_result = (es_op_div|es_op_divu)? { {32{quotient[31]}},quotient[31:0] } :
+                   (es_op_rem|es_op_remu)? { {32{remainder[31]}},remainder[31:0] } :
+                                es_op_mul? { {32{result_lo[31]}},result_lo[31:0] } :
                                 es_Is_alu? { {32{alu_result[31]}},alu_result[31:0] } : { {32{shifter_result[31]}},shifter_result[31:0] };
 
 assign es_result = es_Is_csr? es_csr_result : 
                    es_RWI_type? RW_result : 
-                  /*(es_op_div|es_op_divu)? quotient : 
-                  (es_op_rem|es_op_remu)? remainder : 
-                   es_op_mul? result_lo : */
+                  (es_op_div|es_op_divu)? quotient :
+                  (es_op_rem|es_op_remu)? remainder :
+                   es_op_mul? result_lo :
                    es_Is_alu? alu_result : shifter_result;
 
 endmodule
