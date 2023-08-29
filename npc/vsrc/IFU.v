@@ -97,7 +97,7 @@ assign w_DWHB = 8'b0;
 assign wvalid = 1'b0;
 assign bready = 1'b0;
 
-axi_lite_sram u_axi_lite_sram(clk, !reset, araddr, arvalid, arready, rdata, rvalid, rready, waddr, wdata, w_shifter, w_DWHB, wvalid, wready, bvalid, bready);
+i_axi_lite_sram u_i_axi_lite_sram(clk, !reset, araddr, arvalid, arready, rdata, rvalid, rready, waddr, wdata, w_shifter, w_DWHB, wvalid, wready, bvalid, bready);
 
 assign Instruction = fs_pc[2]? Inst_extend[63:32] : Inst_extend[31:0];
 assign nextpc = Is_expc? ex_addr : Is_mretpc? mret_addr : keep_nextpc? nextpc_r : Is_trans? trans_addr : snpc;

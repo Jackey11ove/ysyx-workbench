@@ -9,8 +9,8 @@ TOPNAME = top
 ##NXDC_FILES = constr/top.nxdc
 INC_PATH ?=
 
-LLVM_CXXFLAGS += $(shell llvm-config --cxxflags) -fPIE
-LLVM_LIBS += $(shell llvm-config --libs)
+LLVM_CXXFLAGS += $(shell llvm-config-11 --cxxflags) -fPIE
+LLVM_LIBS += $(shell llvm-config-11 --libs)
 
 VERILATOR = verilator
 VERILATOR_CFLAGS += -MMD --build -cc  \

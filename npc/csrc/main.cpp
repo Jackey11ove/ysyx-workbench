@@ -28,7 +28,7 @@
 //#define CONFIG_MTRACE
 //#define CONFIG_WAVE
 #define HAS_GUI
-#define CONFIG_DIFFTEST
+//#define CONFIG_DIFFTEST
 #define CONFIG_IRINGBUF
 #define CONFIG_MSIZE 0x8000000
 #define CONFIG_MBASE 0x80000000
@@ -95,8 +95,12 @@ Vtop *top; // 实例化Verilog模块
 VerilatedVcdC *tfp;
 uint64_t simtime = 0;
 static uint8_t pmem[CONFIG_MSIZE] PG_ALIGN = {}; // 内存指针
-static char *img_file = NULL;                    // 装载程序镜像的文件指针
+static char *img_file = NULL;                    // 装载程序镜像的文件指针\
+
+#ifdef CONFIG_DIFFTEST
 static const char *diff_so_file = "/home/jackey/ysyx-workbench/nemu/build/riscv64-nemu-interpreter-so";
+#endif
+
 static int difftest_port = 1234;
 uint64_t *cpu_gpr = NULL;
 uint64_t *cpu_csr = NULL;
@@ -274,6 +278,7 @@ extern "C" void mem_write(long long waddr, long long wdata, char shift, char DWH
   // `wmask`中每比特表示`wdata`中1个字节的掩码,
   // 如`wmask = 0x3`代表只写入最低2个字节, 内存中的其它字节保持不变
   if(waddr == SERIAL_PORT){
+    //printf("\npc = 0x%lx\n",cpu_pc);
     putchar(wdata & 0xff);
     #ifdef CONFIG_DIFFTEST
       difftest_skip_ref();
@@ -484,9 +489,12 @@ static int parse_args(int argc, char *argv[])
       sscanf(optarg, "%d", &difftest_port);
       break; // optarg为当前选项的参数值，也即终端中键入的argv
     // case 'l': log_file = optarg; break;
+#ifdef CONFIG_DIFFTEST
     case 'd':
       diff_so_file = optarg;
       break;
+#endif
+
 #ifdef CONFIG_FTRACE
     case 'f':
       sym_entries = init_ftrace(optarg);
